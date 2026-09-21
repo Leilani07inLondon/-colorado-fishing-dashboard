@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Colorado Fly Fishing Flow Dashboard</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17232b;background:#f2f6f7}
+*{box-sizing:border-box}body{margin:0}.wrap{max-width:1250px;margin:auto;padding:16px}
+header{background:#123d4c;color:#fff;border-radius:15px;padding:22px;margin-bottom:14px}
+h1{margin:0 0 5px;font-size:27px}.sub{opacity:.88}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+button,select,input{font:inherit;padding:10px 12px;border:1px solid #ccd7dc;border-radius:9px;background:#fff}
+button{background:#123d4c;color:#fff;border-color:#123d4c;cursor:pointer}
+button.active{background:#397487}
+.card{background:#fff;border-radius:13px;padding:15px;margin:13px 0;box-shadow:0 1px 5px #0000000d}
+.status{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;color:#5a6a72;font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;margin-top:12px}
+.metric{background:#f5f8f9;border-radius:10px;padding:13px}.metric b{font-size:23px;display:block}
+table{width:100%;border-collapse:collapse}th,td{padding:9px 7px;border-bottom:1px solid #e5eaed;text-align:left}
+th{font-size:12px;color:#5b6a72;position:sticky;top:0;background:#fff;cursor:pointer}
+td.flow{font-weight:700;text-align:right}th.flow{text-align:right}
+tr:hover{background:#f7fafb}.muted{color:#697980;font-size:13px}
+.badge{display:inline-block;border-radius:99px;background:#eaf2f4;padding:3px 7px;font-size:11px}
+a{color:#075e78;text-decoration:none}a:hover{text-decoration:underline}
+.links{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px}
+.section{scroll-margin-top:10px}
+.notice{background:#fff8e8;border-left:4px solid #c78b25;padding:11px;border-radius:7px}
+@media(max-width:720px){th:nth-child(2),td:nth-child(2),th:nth-child(5),td:nth-child(5){display:none}h1{font-size:23px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<h1>Colorado Fly Fishing Flow Dashboard</h1>
+<div class="sub">Live USGS discharge + water temperature, with fishing-condition links for the South Platte basin, Rocky Mountain National Park and Arkansas drainage.</div>
+</header>
+
+<div class="toolbar">
+<button class="active" data-tab="all">All three areas</button>
+<button data-tab="south">South Platte basin</button>
+<button data-tab="rmnp">RMNP</button>
+<button data-tab="arkansas">Arkansas drainage</button>
+<input id="search" placeholder="Filter station or river…" style="min-width:240px">
+<select id="unit"><option value="cfs">CFS</option><option value="cms">m³/s</option></select>
+<button id="refresh">Refresh live data</button>
+</div>
+
+<div id="areaCards"></div>
+
+<div class="card">
+<div class="status"><span id="status">Loading live USGS data…</span><span id="count"></span></div>
+<div id="error"></div>
+<div style="overflow:auto;max-height:67vh;margin-top:9px">
+<table><thead><tr>
+<th data-key="name">Station / river</th><th>Area</th><th class="flow" data-key="flow">Flow</th>
+<th>Water temp</th><th data-key="time">Last reading</th><th>USGS</th>
+</tr></thead><tbody id="stations"></tbody></table>
+</div></div>
+
+<div class="card section" id="reports">
+<h2>Fishing reports & river intelligence</h2>
+<div class="links">
+<a target="_blank" href="https://fishingreports.orvis.com/west/colorado/south-platte-river-11-mile-canyon">Orvis / Royal Gorge Anglers — South Platte</a>
+<a target="_blank" href="https://www.riverreports.com/river-intel/rivers/south-platte-river-fly-fishing">RiverReports — South Platte</a>
+<a target="_blank" href="https://www.riverreports.com/river-intel/rivers/deckers-south-platte-fly-fishing">RiverReports — Deckers</a>
+<a target="_blank" href="https://www.riverreports.com/river-intel/rivers/dream-stream-south-platte-fly-fishing">RiverReports — Dream Stream</a>
+<a target="_blank" href="https://fishingreports.orvis.com/west/colorado/arkansas-river">Orvis / ArkAnglers — Arkansas</a>
+<a target="_blank" href="https://www.riverreports.com/river-intel/destinations/colorado">RiverReports — Colorado</a>
+<a target="_blank" href="https://fishingreports.orvis.com/west/colorado/big-thompson-river">Orvis — Big Thompson</a>
+<a target="_blank" href="https://www.nps.gov/romo/planyourvisit/fishing.htm">NPS — RMNP fishing</a>
+</div>
+</div>
+
+<div class="card">
+<h2>CWRPDA basin flow resources</h2>
+<div class="links">
+<a target="_blank" href="https://www.cwrpda.com/colorado-river-flows">CWRPDA — Colorado river flows</a>
+<a target="_blank" href="https://www.riverreports.com/states/co/south-platte-river">RiverReports — South Platte basin</a>
+<a target="_blank" href="https://www.riverreports.com/states/co/arkansas-river">RiverReports — Arkansas basin</a>
+</div>
+</div>
+
+<div class="card notice">
+<strong>How this works:</strong> Every page load makes a fresh request to the USGS Water Data API for Colorado continuous discharge (parameter 00060) and water temperature where available (parameter 00010). Values can be provisional and can lag telemetry. Station lists are classified dynamically into the three requested areas.
+</div>
+</div>
+
+<script>
+const API="https://api.waterdata.usgs.gov/ogcapi/v0/collections/latest-continuous/items";
+const USGS="https://waterdata.usgs.gov/monitoring-location/";
+let all=[], tab="all", sortKey="name", sortAsc=true;
+
+const tabs={
+ south:{title:"South Platte basin",desc:"South Platte and tributary gauges in the South Platte hydrologic basin.",cls:"south"},
+ rmnp:{title:"Rocky Mountain National Park",desc:"USGS gauges and named streams associated with RMNP.",cls:"rmnp"},
+ arkansas:{title:"Arkansas drainage",desc:"Arkansas River and tributary gauges in the Arkansas basin.",cls:"arkansas"}
+};
+
+function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+function cfs(v){return v==null||isNaN(v)?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:1})+" CFS";}
+function flow(v){if(v==null||isNaN(v))return"—";let n=Number(v);return document.getElementById("unit").value==="cms"?(n*.0283168466).toLocaleString(undefined,{maximumFractionDigits:2})+" m³/s":cfs(n);}
+function time(t){return t?new Date(t).toLocaleString():"—";}
+function temp(v){return v==null||isNaN(v)?"—":(Number(v)*9/5+32).toFixed(1)+" °F";}
+function area(s){return s.area==="south"?"South Platte":s.area==="rmnp"?"RMNP":"Arkansas";}
+
+function classify(p){
+ const n=(p.monitoring_location_name||"").toUpperCase();
+ const h=(p.hydrologic_unit_code||p.huc8||p.subbasin_code||"").toString();
+ const rmnp=/RMNP|ROCKY MOUNTAIN NATIONAL PARK|MORAINE PARK|FALL RIVER|ROARING RIVER|GLACIER CREEK|LOCH VALE|BEAR LAKE|SPRAGUE LAKE|MILLS LAKE|GRAND LAKE|COLORADO RIVER NEAR GRAND LAKE/.test(n);
+ if(rmnp)return"rmnp";
+ if(/^1019/.test(h)||/SOUTH PLATTE|CHEESMAN|DECKERS|SPINNEY|ELEVENMILE|PLATTE RIVER|BIG THOMPSON|CACHE LA POUDRE/.test(n))return"south";
+ if(/^1102/.test(h)||/ARKANSAS RIVER|ARKANSAS|NATHROP|GRANITE|SALIDA|PUEBLO/.test(n))return"arkansas";
+ return null;
+}
+
+function renderCards(){
+ let groups=tab==="all"?Object.keys(tabs):[tab];
+ document.getElementById("areaCards").innerHTML=groups.map(k=>{
+   let rows=all.filter(x=>x.area===k);
+   let flows=rows.map(x=>Number(x.flow)).filter(Number.isFinite);
+   let temps=rows.map(x=>Number(x.temp)).filter(Number.isFinite);
+   return `<div class="card"><h2>${tabs[k].title}</h2><div class="muted">${tabs[k].desc}</div>
+   <div class="grid">
+    <div class="metric"><span>Live gauges</span><b>${rows.length}</b></div>
+    <div class="metric"><span>Median current flow</span><b>${flows.length?flow(flows.sort((a,b)=>a-b)[Math.floor(flows.length/2)]):"—"}</b></div>
+    <div class="metric"><span>Median water temp</span><b>${temps.length?temp(temps.sort((a,b)=>a-b)[Math.floor(temps.length/2)]):"—"}</b></div>
+   </div></div>`;
+ }).join("");
+}
+
+function render(){
+ let q=document.getElementById("search").value.toLowerCase();
+ let rows=all.filter(s=>(tab==="all"||s.area===tab)&&(!q||[s.name,s.number,area(s)].join(" ").toLowerCase().includes(q)));
+ rows.sort((a,b)=>{
+   let x=a[sortKey]??"",y=b[sortKey]??"";
+   if(sortKey==="flow"){x=Number(x)||-Infinity;y=Number(y)||-Infinity}
+   return (x>y?1:x<y?-1:0)*(sortAsc?1:-1);
+ });
+ document.getElementById("stations").innerHTML=rows.map(s=>`
+ <tr><td><strong>${esc(s.name)}</strong><br><span class="muted">USGS-${esc(s.number)}</span></td>
+ <td><span class="badge">${area(s)}</span></td><td class="flow">${flow(s.flow)}</td>
+ <td>${temp(s.temp)}</td><td>${esc(time(s.time))}<br><span class="badge">${esc(s.status||"USGS")}</span></td>
+ <td><a target="_blank" href="${USGS}${encodeURIComponent("USGS-"+s.number)}">Gauge ↗</a></td></tr>`).join("");
+ document.getElementById("count").textContent=`${rows.length} gauges shown`;
+ renderCards();
+}
+
+async function load(){
+ document.getElementById("status").textContent="Loading fresh USGS data…";
+ document.getElementById("error").textContent="";
+ try{
+  const u=API+"?f=json&limit=10000&state_code=08&parameter_code=00060&site_type_code=ST&_="+Date.now();
+  const r=await fetch(u,{cache:"no-store"}); if(!r.ok)throw Error("USGS HTTP "+r.status);
+  const data=await r.json(), m=new Map();
+  for(const f of data.features||[]){
+   const p=f.properties||{}, id=p.monitoring_location_id||p.id, number=p.monitoring_location_number||id?.replace(/^USGS-/,"");
+   if(!id)continue; const ar=classify(p); if(!ar)continue;
+   const old=m.get(id);
+   if(!old||new Date(p.time)>new Date(old.time))m.set(id,{id,number,name:p.monitoring_location_name||"Unnamed",area:ar,flow:p.value,time:p.time,status:p.approval_status||""});
+  }
+  // Fetch current water temperature separately for the selected stations.
+  const ids=[...m.values()].map(x=>x.number).filter(Boolean);
+  const tu=API+"?f=json&limit=10000&state_code=08&parameter_code=00010&site_type_code=ST&_="+Date.now();
+  const tr=await fetch(tu,{cache:"no-store"});
+  if(tr.ok){const td=await tr.json(), tm=new Map();for(const f of td.features||[]){const p=f.properties||{},id=p.monitoring_location_id||p.id;if(id&&!tm.has(id))tm.set(id,p.value);const n=p.monitoring_location_number||id?.replace(/^USGS-/,"");if(n&&!tm.has(n))tm.set(n,p.value)}for(const s of m.values())s.temp=tm.get(s.id)??tm.get(s.number)}
+  all=[...m.values()].sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
+  document.getElementById("status").textContent="Updated "+new Date().toLocaleString()+" from USGS";
+  render();
+ }catch(e){document.getElementById("status").textContent="Update failed";document.getElementById("error").textContent="Could not load live USGS data: "+e.message}
+}
+
+document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-tab]").forEach(x=>x.classList.remove("active"));b.classList.add("active");tab=b.dataset.tab;render()});
+document.getElementById("search").oninput=render;
+document.getElementById("unit").onchange=render;
+document.getElementById("refresh").onclick=load;
+document.querySelectorAll("th[data-key]").forEach(th=>th.onclick=()=>{let k=th.dataset.key;if(sortKey===k)sortAsc=!sortAsc;else{sortKey=k;sortAsc=true}render()});
+load();
+</script>
+</body></html>
