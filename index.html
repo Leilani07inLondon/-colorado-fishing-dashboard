@@ -1,74 +1,172 @@
-<!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#123c52"><title>Colorado Fishing Flow Dashboard</title>
-<style>
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f4f7f8;color:#18313d}
-header{background:#123c52;color:#fff;padding:18px 16px;position:sticky;top:0;z-index:3}h1{margin:0 0 4px;font-size:21px}.sub{font-size:12px;opacity:.85}
-.controls{background:#fff;padding:10px 16px;position:sticky;top:67px;z-index:2;border-bottom:1px solid #d9e2e6}
-.tabs{display:flex;gap:6px;overflow:auto;margin-bottom:9px}.tab{border:1px solid #d9e2e6;background:#fff;padding:8px 11px;border-radius:18px;white-space:nowrap}.tab.active{background:#176b87;color:#fff}
-.row{display:flex;gap:7px}input{flex:1;min-width:0;padding:9px;border:1px solid #d9e2e6;border-radius:9px}button{font:inherit}.action{background:#176b87;color:#fff;border:0;border-radius:9px;padding:9px 12px}
-.status{padding:9px 16px;font-size:12px;color:#657780}.status strong{color:#1f7a4d}main{max-width:1100px;margin:auto;padding:8px 12px 30px}
-.card{background:#fff;border:1px solid #d9e2e6;border-radius:12px;margin:8px 0}.station{padding:13px}h2{font-size:15px;margin:0 0 5px}.meta,.small{font-size:11px;color:#657780}.metrics{display:grid;grid-template-columns:1.1fr .9fr 1fr 1fr;gap:7px;margin-top:9px}.metric{background:#f6f9fa;border-radius:8px;padding:8px}.label{display:block;font-size:10px;color:#657780;text-transform:uppercase}.value{font-weight:700;font-size:16px;margin-top:2px}.links{margin-top:9px}a{color:#176b87;font-size:12px;text-decoration:none}.empty{text-align:center;padding:35px;color:#657780}.error{color:#9d2c2c}
-@media(max-width:650px){.metrics{grid-template-columns:1fr 1fr}}
-</style></head><body>
-<header><h1>Colorado Fishing Flow Dashboard</h1><div class="sub">Live USGS streamflow • South Platte • RMNP • Arkansas</div></header>
-<section class="controls"><div class="tabs">
-<button class="tab active" data-area="All">All</button><button class="tab" data-area="South Platte">South Platte</button><button class="tab" data-area="RMNP">RMNP</button><button class="tab" data-area="Arkansas">Arkansas</button>
-</div><div class="row"><input id="search" placeholder="Search station or river…"><button class="action" id="refresh">Refresh</button></div></section>
-<div id="status" class="status">Loading live USGS data…</div><main id="stations"><div class="empty">Loading…</div></main>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Colorado Streamflow Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 1rem;
+      background: #f4f6f8;
+    }
+    h1 {
+      text-align: center;
+    }
+    .gauge-container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 1rem;
+    }
+    .gauge-card {
+      background: white;
+      border-radius: 8px;
+      padding: 1rem;
+      width: 300px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+    }
+    .gauge-card h2 {
+      font-size: 1.2rem;
+      margin-bottom: 0.5rem;
+    }
+    .error {
+      color: #b00020;
+      font-weight: bold;
+    }
+    .loading {
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>Colorado Streamflow Dashboard</h1>
+  <div class="gauge-container" id="dashboard"></div>
+
 <script>
-const API="https://waterservices.usgs.gov/nwis/iv/";
-const RMNP={w:-105.95,s:40.15,e:-105.35,n:40.70};
-let stations=[],area="All";
-const esc=x=>String(x??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const num=x=>Number.isFinite(Number(x))?Number(x):null;
-function info(ts){
- const s=ts.sourceInfo||{}, props=s.siteProperty||[], p={};
- props.forEach(x=>{if(x.name)p[x.name]=x.value});
- const g=s.geoLocation?.geogLocation||{};
- let code=s.siteCode;
- if(Array.isArray(code)){let x=code.find(v=>String(v.network||"").toUpperCase()=="NWIS")||code[0];code=x?.value}
- return {name:s.siteName||"",number:String(code||"").replace(/^USGS:/i,""),lat:num(g.latitude),lon:num(g.longitude),huc:p.hucCd||"",type:p.siteTypeCd||""};
-}
-function parse(j){
- const out=[];
- for(const ts of (j?.value?.timeSeries||[])){
-  const i=info(ts), v=ts.variable||{}, pc=String(v.variableCode?.[0]?.value||v.variableCode||"");
-  const a=ts.values?.[0]?.value||[], z=a[a.length-1]; if(!i.number||!z)continue;
-  out.push({...i,parameter:pc,value:num(z.value),time:z.dateTime||"",qual:z.qualifiers||""});
- }
- return out;
-}
-function rmnp(s){
- const n=s.name.toUpperCase();
- return /ROCKY MOUNTAIN NATIONAL PARK|MORAINE PARK|FALL RIVER|ROARING RIVER|GLACIER CREEK|LOCH VALE|BEAR LAKE|MILLS LAKE|SPRAGUE LAKE/.test(n) ||
- (s.lat!=null&&s.lon!=null&&s.lon>=RMNP.w&&s.lon<=RMNP.e&&s.lat>=RMNP.s&&s.lat<=RMNP.n);
-}
-function classify(s){
- const n=s.name.toUpperCase(),h=String(s.huc||"");
- if(rmnp(s))return"RMNP";
- if(h.startsWith("1019")||/SOUTH PLATTE|PLATTE RIVER|BIG THOMPSON|CACHE LA POUDRE|CHEESMAN|DECKERS|SPINNEY|ELEVENMILE/.test(n))return"South Platte";
- if(h.startsWith("1102")||/ARKANSAS RIVER|ARKANSAS|NATHROP|GRANITE|SALIDA|PUEBLO|BUENA VISTA/.test(n))return"Arkansas";
- return null;
-}
-async function load(){
- const st=document.getElementById("status");st.textContent="Refreshing live USGS gauges…";
- try{
-  const u=new URL(API);u.search=new URLSearchParams({format:"json,1.1",stateCd:"CO",parameterCd:"00060,00010",siteStatus:"active",siteType:"ST"});
-  const r=await fetch(u,{cache:"no-store"});if(!r.ok)throw Error("USGS HTTP "+r.status);
-  const raw=parse(await r.json()),m=new Map();
-  raw.forEach(x=>{const a=classify(x);if(!a||x.value==null)return;if(!m.has(x.number))m.set(x.number,{number:x.number,name:x.name,area:a,huc:x.huc,flow:null,temp:null,time:"",qual:""});let s=m.get(x.number);if(x.parameter=="00060"){s.flow=x.value;s.time=x.time;s.qual=x.qual||""}if(x.parameter=="00010")s.temp=x.value});
-  stations=[...m.values()].filter(x=>x.flow!=null).sort((a,b)=>a.name.localeCompare(b.name));
-  const c=a=>stations.filter(x=>x.area==a).length;
-  st.innerHTML="<strong>"+stations.length+" live gauges</strong> loaded from USGS · South Platte "+c("South Platte")+" · RMNP "+c("RMNP")+" · Arkansas "+c("Arkansas")+" · "+new Date().toLocaleTimeString();
-  render();
- }catch(e){console.error(e);st.innerHTML='<span class="error">USGS data could not be loaded: '+esc(e.message)+"</span>";document.getElementById("stations").innerHTML='<div class="empty">Tap Refresh to try again.</div>'}
-}
-function render(){
- const q=document.getElementById("search").value.toLowerCase(),rows=stations.filter(s=>(area=="All"||s.area==area)&&(!q||(s.name+" "+s.number+" "+s.area).toLowerCase().includes(q)));
- document.getElementById("stations").innerHTML=rows.length?rows.map(s=>'<article class="card"><div class="station"><h2>'+esc(s.name)+'</h2><div class="meta">'+esc(s.area)+" · USGS "+esc(s.number)+(s.huc?" · HUC "+esc(s.huc):"")+'</div><div class="metrics"><div class="metric"><span class="label">Flow</span><div class="value">'+s.flow.toLocaleString(undefined,{maximumFractionDigits:1})+" cfs</div></div><div class="metric"><span class="label">Water temp</span><div class="value">"+(s.temp==null?"—":s.temp.toFixed(1)+" °C")+'</div></div><div class="metric"><span class="label">Reading</span><div class="value">'+esc(new Date(s.time).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}))+'</div></div><div class="metric"><span class="label">Status</span><div class="value">'+(s.qual=="P"?"Provisional":"Live")+'</div></div></div><div class="links"><a target="_blank" rel="noopener" href="https://waterdata.usgs.gov/monitoring-location/'+encodeURIComponent(s.number)+'/">USGS gauge ↗</a></div></div></article>').join(""):'<div class="empty">No matching live gauges found.</div>';
-}
-document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");area=b.dataset.area;render()});
-document.getElementById("search").oninput=render;document.getElementById("refresh").onclick=load;load();
-</script></body></html>
+  // List of gauge site IDs to query (South Platte, Arkansas, Rocky Mountain NP areas)
+  // Adjust or add site IDs as needed.
+  const gauges = [
+    { id: '06730200', name: 'South Platte River near Kersey' },
+    { id: '07065000', name: 'Arkansas River near Salida' },
+    { id: '09085000', name: 'Colorado River near Granby (Rocky Mtn NP area)' },
+    { id: '09053000', name: 'Big Thompson River near Drake' }
+  ];
+
+  const dashboard = document.getElementById('dashboard');
+
+  // Fetch data for one gauge with timeout of 10 sec
+  function fetchGaugeData(siteId) {
+    const url = `https://waterservices.usgs.gov/nwis/iv/?format=json&sites=${siteId}&parameterCd=00060,00010&siteStatus=active`;
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error('Timeout'));
+      }, 10000);
+
+      fetch(url)
+        .then(response => {
+          clearTimeout(timer);
+          if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+          return response.json();
+        })
+        .then(data => resolve(data))
+        .catch(err => {
+          clearTimeout(timer);
+          reject(err);
+        });
+    });
+  }
+
+  // Parse the returned USGS JSON for the relevant data points
+  function parseGaugeData(data) {
+    try {
+      const timeSeries = data.value.timeSeries;
+      if (!timeSeries || timeSeries.length === 0) return null;
+
+      // Find discharge (00060) and water temp (00010)
+      let discharge = null;
+      let waterTemp = null;
+      let dateTime = null;
+
+      for (let ts of timeSeries) {
+        const param = ts.variable.variableCode[0].value;
+        const points = ts.values[0].value;
+        if (points.length === 0) continue;
+        // Use last value
+        const latestValue = points[points.length - 1];
+        dateTime = latestValue.dateTime;
+
+        if (param === '00060') {
+          discharge = latestValue.value;
+        }
+        if (param === '00010') {
+          waterTemp = latestValue.value;
+        }
+      }
+      return { discharge, waterTemp, dateTime };
+    } catch {
+      return null;
+    }
+  }
+
+  // Create a gauge card
+  function createGaugeCard(name, data, error=null) {
+    const card = document.createElement('div');
+    card.className = 'gauge-card';
+
+    const title = document.createElement('h2');
+    title.textContent = name;
+    card.appendChild(title);
+
+    if (error) {
+      const errMsg = document.createElement('p');
+      errMsg.className = 'error';
+      errMsg.textContent = `Error: ${error}`;
+      card.appendChild(errMsg);
+    } else if (data) {
+      const disp = document.createElement('p');
+      disp.textContent = `Discharge (cfs): ${data.discharge !== null ? data.discharge : 'N/A'}`;
+
+      const temp = document.createElement('p');
+      temp.textContent = `Water Temperature (°C): ${data.waterTemp !== null ? data.waterTemp : 'N/A'}`;
+
+      const time = document.createElement('p');
+      const dt = new Date(data.dateTime);
+      time.textContent = `Last updated: ${dt.toLocaleString()}`;
+
+      card.appendChild(disp);
+      card.appendChild(temp);
+      card.appendChild(time);
+    } else {
+      const loading = document.createElement('p');
+      loading.className = 'loading';
+      loading.textContent = 'Loading...';
+      card.appendChild(loading);
+    }
+
+    return card;
+  }
+
+  // Initialize dashboard with loading placeholders
+  gauges.forEach(g => {
+    const card = createGaugeCard(g.name, null);
+    dashboard.appendChild(card);
+  });
+
+  // Load data independently with timeout and update cards
+  gauges.forEach((g, idx) => {
+    fetchGaugeData(g.id)
+      .then(data => {
+        const parsed = parseGaugeData(data);
+        const newCard = createGaugeCard(g.name, parsed);
+        dashboard.replaceChild(newCard, dashboard.children[idx]);
+      })
+      .catch(err => {
+        const newCard = createGaugeCard(g.name, null, err.message);
+        dashboard.replaceChild(newCard, dashboard.children[idx]);
+      });
+  });
+</script>
+</body>
+</html>
