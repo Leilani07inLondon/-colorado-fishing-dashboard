@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Live Colorado fishing flow dashboard powered by USGS streamgages.">
+  <title>Colorado Fishing Flows</title>
+  <style>
+    :root { --ink:#102a43; --muted:#627d98; --water:#0b7285; --water-dark:#075766; --paper:#f5f9fa; --line:#d9e7ea; --good:#16794a; --warn:#a85a00; --bad:#a22d2d; }
+    * { box-sizing:border-box; } body { margin:0; color:var(--ink); background:var(--paper); font:16px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    header { color:white; background:linear-gradient(115deg,#063b48,#0b7285); padding:38px max(20px,calc((100% - 1120px)/2)); }
+    h1 { margin:0; font-size:clamp(1.9rem,5vw,3rem); letter-spacing:-.035em; } header p { max-width:670px; margin:8px 0 0; color:#d9f4f5; }
+    main { width:min(1120px,calc(100% - 32px)); margin:28px auto 48px; } .notice { margin-bottom:18px; padding:13px 15px; border:1px solid #b8dfe4; border-radius:10px; background:#e8f8fa; color:#075766; }
+    .toolbar { display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:center; margin-bottom:14px; } input,button { font:inherit; } input { min-width:0; padding:11px 13px; border:1px solid #b9cbd2; border-radius:8px; background:white; } button { cursor:pointer; padding:10px 14px; border:1px solid transparent; border-radius:8px; font-weight:650; } button.primary { color:white; background:var(--water); } button.primary:hover { background:var(--water-dark); } button.toggle { color:var(--water-dark); background:white; border-color:#a9c5ca; }
+    .tabs { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 18px; } .tab { color:#315268; background:#e5eef0; } .tab[aria-selected="true"] { color:white; background:var(--water); }
+    .meta { min-height:26px; margin:0 0 15px; color:var(--muted); font-size:.92rem; } .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:14px; }
+    .card { display:flex; flex-direction:column; min-height:220px; padding:18px; border:1px solid var(--line); border-radius:12px; background:white; box-shadow:0 2px 6px #102a4309; } .eyebrow { margin:0 0 6px; color:var(--water-dark); font-weight:700; font-size:.78rem; letter-spacing:.06em; text-transform:uppercase; } .card h2 { margin:0; font-size:1.08rem; line-height:1.25; } .site { margin:4px 0 14px; color:var(--muted); font-size:.8rem; }
+    .values { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:auto; } .value { padding:10px; border-radius:8px; background:#f1f7f8; } .value span { display:block; color:var(--muted); font-size:.75rem; } .value strong { display:block; margin-top:2px; font-size:1.15rem; }
+    .status { min-height:1.4em; margin:13px 0 5px; font-size:.86rem; font-weight:650; } .live { color:var(--good); } .empty { color:var(--warn); } .error { color:var(--bad); } .reading { min-height:1.4em; color:var(--muted); font-size:.79rem; } a { color:#066b7b; } .links { display:flex; flex-wrap:wrap; gap:9px 14px; margin:7px 0 0; font-size:.83rem; }
+    .empty-state { padding:28px; border:1px dashed #9dbbc1; border-radius:10px; color:var(--muted); text-align:center; background:white; } footer { width:min(1120px,calc(100% - 32px)); margin:0 auto 38px; color:var(--muted); font-size:.84rem; } footer h2 { color:var(--ink); font-size:1rem; } footer ul { padding-left:19px; } footer p { max-width:900px; }
+    @media (max-width:600px) { .toolbar { grid-template-columns:1fr auto; } .toolbar .primary { grid-column:span 2; } }
+  </style>
+</head>
+<body>
+  <header><h1>Colorado Fishing Flows</h1><p>Recent discharge and water-temperature readings from your selected USGS and Colorado DWR gauges across Colorado’s Front Range and nearby fishing waters.</p></header>
+  <main>
+    <div class="notice" id="environment-note" hidden></div>
+    <div class="toolbar"><input id="search" type="search" placeholder="Search a river, town, or station ID" aria-label="Search gauges"><button class="toggle" id="units" type="button" aria-label="Change flow units">CFS</button><button class="primary" id="refresh" type="button">Refresh readings</button></div>
+    <div class="tabs" role="tablist" aria-label="Drainage"><button class="tab" role="tab" aria-selected="true" data-drainage="All">All</button><button class="tab" role="tab" aria-selected="false" data-drainage="Bear Creek">Bear Creek</button><button class="tab" role="tab" aria-selected="false" data-drainage="South Platte">South Platte</button><button class="tab" role="tab" aria-selected="false" data-drainage="Big Thompson">Big Thompson</button><button class="tab" role="tab" aria-selected="false" data-drainage="Clear Creek">Clear Creek</button><button class="tab" role="tab" aria-selected="false" data-drainage="St. Vrain">St. Vrain</button><button class="tab" role="tab" aria-selected="false" data-drainage="Boulder Creek">Boulder Creek</button><button class="tab" role="tab" aria-selected="false" data-drainage="Cache la Poudre">Cache la Poudre</button><button class="tab" role="tab" aria-selected="false" data-drainage="Tarryall Creek">Tarryall Creek</button><button class="tab" role="tab" aria-selected="false" data-drainage="Other Rivers">Other Rivers</button></div>
+    <p class="meta" id="meta" aria-live="polite">Preparing selected gauges…</p><section class="grid" id="cards" aria-live="polite"></section>
+  </main>
+  <footer>
+    <h2>Fishing &amp; water resources</h2>
+    <ul><li><a href="https://cpw.state.co.us/fishing" target="_blank" rel="noopener">Colorado Parks &amp; Wildlife — fishing</a></li><li><a href="https://cpw.state.co.us/fishing/Pages/Regulations.aspx" target="_blank" rel="noopener">Colorado fishing regulations</a></li><li><a href="https://waterdata.usgs.gov/co/nwis/rt" target="_blank" rel="noopener">USGS Colorado real-time water data</a></li><li><a href="https://dashboard.waterdata.usgs.gov/app/nwd/en/" target="_blank" rel="noopener">USGS National Water Dashboard</a></li></ul>
+    <p>Conditions can change rapidly. These readings are informational only—check weather, access, flows, closures, and regulations before fishing.</p>
+  </footer>
+  <script>
+  (() => {
+    // Selected by the dashboard owner. USGS IDs and Colorado DWR telemetry abbreviations are intentionally explicit.
+    const GAUGES = [
+      {id:'06710385',drainage:'Bear Creek',name:'Bear Creek above Evergreen',provider:'USGS'}, {id:'BCRMORCO',drainage:'Bear Creek',name:'Bear Creek at Morrison',provider:'DWR'},
+      {id:'PLASPICO',drainage:'South Platte',name:'South Platte above Spinney',provider:'DWR'}, {id:'PLAHARCO',drainage:'South Platte',name:'South Platte above Eleven Mile',provider:'DWR'}, {id:'PLAGEOCO',drainage:'South Platte',name:'South Platte — Eleven Mile Canyon',provider:'DWR'}, {id:'06700000',drainage:'South Platte',name:'South Platte above Cheesman',provider:'USGS'}, {id:'PLACHECO',drainage:'South Platte',name:'South Platte below Cheesman',provider:'DWR'}, {id:'06701900',drainage:'South Platte',name:'South Platte at Deckers',provider:'USGS'}, {id:'PLASTRCO',drainage:'South Platte',name:'South Platte below Strontia',provider:'DWR'}, {id:'PLAWATCO',drainage:'South Platte',name:'South Platte at Waterton',provider:'DWR'}, {id:'PLACHACO',drainage:'South Platte',name:'South Platte below Chatfield',provider:'DWR'},
+      {id:'402114105350101',drainage:'Big Thompson',name:'Big Thompson below Moraine Park',provider:'USGS'}, {id:'BTABESCO',drainage:'Big Thompson',name:'Big Thompson above Lake Estes',provider:'DWR'}, {id:'BTBLESCO',drainage:'Big Thompson',name:'Big Thompson below Lake Estes',provider:'DWR'}, {id:'06741510',drainage:'Big Thompson',name:'Big Thompson at Loveland',provider:'USGS'},
+      {id:'CLEDERCO',drainage:'Clear Creek',name:'Clear Creek at Derby',provider:'DWR'}, {id:'394308105413800',drainage:'Clear Creek',name:'Clear Creek above Georgetown Lake',provider:'USGS'}, {id:'06716500',drainage:'Clear Creek',name:'Clear Creek near Lawson',provider:'USGS'}, {id:'06715000',drainage:'Clear Creek',name:'Clear Creek above West Fork near Empire',provider:'USGS'}, {id:'06718550',drainage:'Clear Creek',name:'Clear Creek at Blackhawk',provider:'USGS'}, {id:'06719505',drainage:'Clear Creek',name:'Clear Creek at Golden',provider:'USGS'},
+      {id:'06725450',drainage:'St. Vrain',name:'St. Vrain below Longmont',provider:'USGS'}, {id:'STALENCO',drainage:'St. Vrain',name:'North St. Vrain near Allenspark',provider:'DWR'}, {id:'BRKRESCO',drainage:'St. Vrain',name:'North St. Vrain above Button Rock',provider:'DWR'}, {id:'NSVBBRCO',drainage:'St. Vrain',name:'North St. Vrain below Button Rock',provider:'DWR'}, {id:'MIDSTECO',drainage:'St. Vrain',name:'Middle St. Vrain at Peaceful Valley',provider:'DWR'}, {id:'SSVWARCO',drainage:'St. Vrain',name:'South St. Vrain near Ward',provider:'DWR'}, {id:'SBRSTVCO',drainage:'St. Vrain',name:'South St. Vrain',provider:'DWR'},
+      {id:'BOCOBOCO',drainage:'Boulder Creek',name:'Boulder Creek at Boulder',provider:'DWR'}, {id:'06727000',drainage:'Boulder Creek',name:'Boulder Creek near Orodell',provider:'USGS'}, {id:'BOCPINCO',drainage:'Boulder Creek',name:'South Boulder Creek above Gross Reservoir',provider:'DWR'}, {id:'BOCBGRCO',drainage:'Boulder Creek',name:'South Boulder Creek below Gross Reservoir',provider:'DWR'}, {id:'06729500',drainage:'Boulder Creek',name:'South Boulder Creek near Eldorado Springs',provider:'USGS'}, {id:'BOCMIDCO',drainage:'Boulder Creek',name:'Middle Boulder Creek at Nederland',provider:'DWR'},
+      {id:'CLANSECO',drainage:'Cache la Poudre',name:'North Fork below Seaman Reservoir',provider:'DWR'}, {id:'06751150',drainage:'Cache la Poudre',name:'North Fork below Halligan Reservoir',provider:'USGS'}, {id:'CLARIVCO',drainage:'Cache la Poudre',name:'Cache la Poudre near New Cache',provider:'DWR'}, {id:'CLAFTCCO',drainage:'Cache la Poudre',name:'Cache la Poudre at canyon mouth near Fort Collins',provider:'DWR'}, {id:'06752260',drainage:'Cache la Poudre',name:'Cache la Poudre at Fort Collins',provider:'USGS'},
+      {id:'TARCOMCO',drainage:'Tarryall Creek',name:'Tarryall Creek at US 285 near Como',provider:'DWR'}, {id:'TARTARCO',drainage:'Tarryall Creek',name:'Tarryall Creek below Tarryall Reservoir',provider:'DWR'}, {id:'TARBORCO',drainage:'Tarryall Creek',name:'Tarryall Creek near Bordenville',provider:'DWR'},
+      {id:'09050700',drainage:'Other Rivers',name:'Blue River at Dillon',provider:'USGS'}, {id:'09010500',drainage:'Other Rivers',name:'Colorado River near Grand Lake',provider:'USGS'}, {id:'06746095',drainage:'Other Rivers',name:'Joe Wright Creek above Joe Wright Reservoir',provider:'USGS'}, {id:'06746110',drainage:'Other Rivers',name:'Joe Wright Creek below Joe Wright Reservoir',provider:'USGS'}
+    ];
+    const usgsEndpoint = id => `https://waterservices.usgs.gov/nwis/iv/?format=json&sites=${encodeURIComponent(id)}&parameterCd=00060,00010&siteStatus=all`;
+    const dwrEndpoint = id => `https://dwr.state.co.us/Rest/GET/api/v2/telemetrystations/telemetrystation?abbrev=${encodeURIComponent(id)}&parameter=DISCHRG&format=json&forceParseableResponse=true`;
+    const cards = document.querySelector('#cards'), meta = document.querySelector('#meta'), search = document.querySelector('#search');
+    let active='All', metric=false, readings=[];
+    const esc = text => String(text).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    const fmt = (number, digits=0) => new Intl.NumberFormat('en-US',{maximumFractionDigits:digits}).format(number);
+    const readingTime = iso => iso ? new Intl.DateTimeFormat('en-US',{dateStyle:'medium',timeStyle:'short',timeZone:'America/Denver',timeZoneName:'short'}).format(new Date(iso)) : 'not reported';
+    function latest(series) { const values = series?.values?.flatMap(v => v.value || []) || []; return values.length ? values.reduce((a,b) => new Date(a.dateTime) > new Date(b.dateTime) ? a : b) : null; }
+    function parse(gauge, payload) {
+      const data={...gauge, flow:null,temp:null, flowTime:null,tempTime:null,status:'No recent data',kind:'empty'};
+      const rows=payload?.value?.timeSeries || [];
+      for (const row of rows) { const code=row.variable?.variableCode?.[0]?.value, value=latest(row); if (!value) continue; data.name=row.sourceInfo?.siteName || data.name; if (code==='00060') { data.flow=Number(value.value); data.flowTime=value.dateTime; } if (code==='00010') { data.temp=Number(value.value); data.tempTime=value.dateTime; } }
+      if (data.flow !== null || data.temp !== null) { data.status='Live USGS reading'; data.kind='live'; } return data;
+    }
+    function parseDwr(gauge, payload) { const row=payload?.ResultList?.[0] || payload?.resultList?.[0]; if (!row || Number(row.measValue) !== Number(row.measValue)) return {...gauge,flow:null,temp:null,flowTime:null,tempTime:null,status:'No recent DWR discharge data',kind:'empty'}; return {...gauge,name:row.stationName||gauge.name,flow:Number(row.measValue),temp:null,flowTime:row.measDateTime||null,tempTime:null,status:'Live DWR reading',kind:'live'}; }
+    async function fetchGauge(gauge) {
+      const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),10000);
+      try { const response=await fetch(gauge.provider==='DWR'?dwrEndpoint(gauge.id):usgsEndpoint(gauge.id),{signal:controller.signal,headers:{Accept:'application/json'}}); if (!response.ok) throw new Error(`${gauge.provider} returned ${response.status}`); const payload=await response.json(); return gauge.provider==='DWR'?parseDwr(gauge,payload):parse(gauge,payload); }
+      finally { clearTimeout(timer); }
+    }
+    function shown() { const q=search.value.trim().toLowerCase(); return readings.filter(r => (active==='All'||r.drainage===active) && `${r.name} ${r.id} ${r.drainage}`.toLowerCase().includes(q)).sort((a,b)=>a.name.localeCompare(b.name)); }
+    function render() {
+      const list=shown(); cards.innerHTML=list.length ? list.map(r => { const flow=r.flow===null?'—':metric?`${fmt(r.flow*.0283168466,2)} m³/s`:`${fmt(r.flow)} CFS`; const temp=r.temp===null?'—':`${fmt(r.temp,1)} °C`; const time=r.flowTime||r.tempTime; const isDwr=r.provider==='DWR', stationUrl=isDwr?`https://dwr.state.co.us/Tools/Stations/${encodeURIComponent(r.id)}`:`https://waterdata.usgs.gov/monitoring-location/USGS-${encodeURIComponent(r.id)}/`, rawUrl=isDwr?dwrEndpoint(r.id):usgsEndpoint(r.id); return `<article class="card"><p class="eyebrow">${esc(r.drainage)}</p><h2>${esc(r.name)}</h2><p class="site">${isDwr?'Colorado DWR':'USGS'} ${esc(r.id)}</p><div class="values"><div class="value"><span>Flow</span><strong>${flow}</strong></div><div class="value"><span>Water temp.</span><strong>${temp}</strong></div></div><p class="status ${r.kind}">${esc(r.status)}</p><p class="reading">Last reading: ${esc(readingTime(time))}</p><p class="links"><a href="${stationUrl}" target="_blank" rel="noopener">${isDwr?'DWR':'USGS'} station ↗</a><a href="${rawUrl}" target="_blank" rel="noopener">Raw data ↗</a></p></article>`; }).join('') : '<div class="empty-state">No gauges match this filter.</div>';
+      const live=readings.filter(r=>r.kind==='live').length; meta.textContent=`${list.length} gauge${list.length===1?'':'s'} shown · ${live} live reading${live===1?'':'s'} · Updated ${new Intl.DateTimeFormat('en-US',{timeStyle:'short',timeZone:'America/Denver',timeZoneName:'short'}).format(new Date())}`;
+    }
+    async function refresh() {
+      document.querySelector('#refresh').disabled=true; document.querySelector('#refresh').textContent='Refreshing…'; meta.textContent='Refreshing each selected USGS gauge…';
+      const results=await Promise.allSettled(GAUGES.map(fetchGauge));
+      readings=results.map((result,index)=> result.status==='fulfilled' ? result.value : {...GAUGES[index],flow:null,temp:null,flowTime:null,tempTime:null,status:location.protocol==='file:'?'Live data blocked by local file preview':result.reason?.name==='AbortError'?'Unavailable — timed out after 10 seconds':'Unavailable — request failed',kind:'error'});
+      render(); document.querySelector('#refresh').disabled=false; document.querySelector('#refresh').textContent='Refresh readings';
+    }
+    document.querySelector('#units').addEventListener('click',e=>{metric=!metric; e.currentTarget.textContent=metric?'m³/s':'CFS'; e.currentTarget.setAttribute('aria-label',metric?'Change flow units to cubic feet per second':'Change flow units to cubic metres per second'); render();});
+    document.querySelector('#refresh').addEventListener('click',refresh); search.addEventListener('input',render);
+    document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>{active=tab.dataset.drainage; document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t===tab))); render();}));
+    if (location.protocol==='file:') { const n=document.querySelector('#environment-note'); n.hidden=false; n.textContent='You are viewing this file locally. Some browsers block web requests from file:// pages, so live USGS readings may be unavailable here. Publish it on GitHub Pages (HTTPS) for the intended live dashboard.'; }
+    refresh();
+  })();
+  </script>
+</body>
+</html>
